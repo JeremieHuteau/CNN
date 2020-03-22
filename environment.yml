@@ -1,0 +1,14 @@
+channels:
+  - pytorch
+  - defaults
+dependencies:
+  - cpuonly=1.0=0
+  - matplotlib=3.1.*=py38_0
+  - numpy=1.18.*=py38h4f9e942_0
+  - pip=20.0.*=py38_1
+  - python=3.8.*=h0371630_1
+  - pytorch=1.4.0=py3.8_cpu_0
+  - torchvision=0.5.0=py38_cpu
+  - tqdm=4.43.*=py_0
+  - pip:
+    - torchsummary==1.5.*
