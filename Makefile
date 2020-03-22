@@ -1,3 +1,5 @@
+PYTHON = python3
+
 SRC_DIR = src
 DATA_DIR = data
 
@@ -9,13 +11,14 @@ DOWNLOAD_URL_PREFIX = http://yann.lecun.com/exdb/mnist
 IDX_IMAGES_SUFFIX = images-idx3-ubyte
 IDX_LABELS_SUFFIX = labels-idx1-ubyte
 
+MODEL_SAVE = model.tar
+.PRECIOUS: $(MODEL_SAVE)
+
 # All the directories that need to be created.
 MK_DIRECTORIES = $(SET_DIRS)
 
 .PHONY: all
-all: $(TRAIN_DIR)/train-$(IDX_LABELS_SUFFIX) \
-	$(TRAIN_DIR)/train-$(IDX_IMAGES_SUFFIX)
-
+all: $(MODEL_SAVE)
 
 # Download zipped data
 .PRECIOUS: $(TRAIN_DIR)/%.gz $(TEST_DIR)/%.gz
@@ -30,5 +33,13 @@ $(TRAIN_DIR)/%: $(TRAIN_DIR)/%.gz
 $(TEST_DIR)/%: $(TEST_DIR)/%.gz
 	gzip -cdk $< > $@
 
+
+# Train and save model.
+$(SRC_DIR)/train.py: $(SRC_DIR)/data.py $(SRC_DIR)/models.py
+$(MODEL_SAVE): $(SRC_DIR)/train.py \
+		$(TRAIN_DIR)/train-$(IDX_IMAGES_SUFFIX) \
+		$(TRAIN_DIR)/train-$(IDX_LABELS_SUFFIX) 
+	$(PYTHON) $^ $@	
+
 $(MK_DIRECTORIES):
-	mkdir -p $@
+	@mkdir -p $@
