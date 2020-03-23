@@ -1,5 +1,6 @@
-PYTHON = python3
+CONDA_ROOT = $(shell conda info --base)
 CONDA_ENV_NAME = mnist-pytorch
+PYTHON = $(CONDA_ROOT)/envs/$(CONDA_ENV_NAME)/bin/python3
 
 SRC_DIR = src
 DATA_DIR = data
@@ -19,16 +20,12 @@ MODEL_SAVE = model.tar
 MK_DIRECTORIES = $(SET_DIRS)
 
 .PHONY: all
-all: init $(MODEL_SAVE)
+all: $(MODEL_SAVE)
 
 # Setup the conda environment with all the required packages.
 .PHONY: environment
 environment:
 	conda env create -f environment.yml -n $(CONDA_ENV_NAME)
-
-.PHONY: init
-init:
-	conda activate $(CONDA_ENV_NAME)
 
 # Download zipped data
 .PRECIOUS: $(TRAIN_DIR)/%.gz $(TEST_DIR)/%.gz
@@ -43,9 +40,8 @@ $(TRAIN_DIR)/%: $(TRAIN_DIR)/%.gz
 $(TEST_DIR)/%: $(TEST_DIR)/%.gz
 	gzip -cdk $< > $@
 
-
 # Train and save model.
-$(SRC_DIR)/train.py: $(SRC_DIR)/data.py $(SRC_DIR)/models.py
+$(SRC_DIR)/train.py: $(SRC_DIR)/data.py $(SRC_DIR)/CNN.py
 $(MODEL_SAVE): $(SRC_DIR)/train.py \
 		$(TRAIN_DIR)/train-$(IDX_IMAGES_SUFFIX) \
 		$(TRAIN_DIR)/train-$(IDX_LABELS_SUFFIX) 
