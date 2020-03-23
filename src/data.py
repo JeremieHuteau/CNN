@@ -28,7 +28,7 @@ class MnistDataset(torch.utils.data.Dataset):
         return len(self.images)
 
     def __getitem__(self, idx):
-        image, label = self.images[idx,:,:,None], self.labels[idx]
+        image, label = self.images[idx,:,:,None], int(self.labels[idx])
 
         if self.image_transform is not None:
             image = self.image_transform(image)
