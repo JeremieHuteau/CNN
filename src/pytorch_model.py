@@ -73,7 +73,8 @@ class PyTorchModel(nn.Module, abc.ABC):
                     history.setdefault('val_'+metric_name, []).append(value)
                     epoch_metrics['val_'+metric_name] = value
 
-            print(utils.format_metrics(epoch_metrics))
+            #print(utils.format_metrics(epoch_metrics))
+            tqdm.write(utils.format_metrics(epoch_metrics))
 
 
         return history

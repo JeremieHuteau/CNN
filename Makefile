@@ -40,8 +40,13 @@ $(TRAIN_DIR)/%: $(TRAIN_DIR)/%.gz
 $(TEST_DIR)/%: $(TEST_DIR)/%.gz
 	gzip -cdk $< > $@
 
-# Train and save model.
+# "Dependencies" of source code files.
+$(SRC_DIR)/CNN.py: $(SRC_DIR)/pytorch_model.py
+	@touch $@
 $(SRC_DIR)/train.py: $(SRC_DIR)/data.py $(SRC_DIR)/CNN.py
+	@touch $@
+
+# Train and save model.
 $(MODEL_SAVE): $(SRC_DIR)/train.py \
 		$(TRAIN_DIR)/train-$(IDX_IMAGES_SUFFIX) \
 		$(TRAIN_DIR)/train-$(IDX_LABELS_SUFFIX) 

@@ -38,28 +38,18 @@ def main(train_images_path, train_labels_path, model_save_path):
     for inputs, labels in training_dataloader:
         sample = inputs
         break
-    model = Model(nb_classes=10, sample=sample[0])
+    model = Model(nb_classes=10, inputs=sample[0])
 
 
     epochs = 10
     # Fit model.
     history = model.fit_generator(
             training_dataloader,
-            steps_per_epoch = (train_split_size // batch_size) // 10,
+            steps_per_epoch = (train_split_size // batch_size),
             epochs = epochs,
             validation_data = validation_dataloader,
             validation_steps = 100
         )
-
-    # Plot learning curves.
-    for metric_name, metric_values in history.items():
-        plt.plot(metric_values, label=metric_name)
-    plt.plot(np.full(epochs, 1.0), 'k--')
-    plt.gca().set_ylim(bottom=0.0)
-    plt.xlabel('epoch')
-    plt.ylabel('metric value')
-    plt.legend()
-    plt.show(block=False)
 
     # Metrics computed on whole sets.
     training_metrics = model.evaluate(training_dataloader, model.metrics)
@@ -72,8 +62,17 @@ def main(train_images_path, train_labels_path, model_save_path):
     torch.save({
             'model_state_dict': model.state_dict(),
             'optimizer_state_dict': model.optimizer.state_dict(),
+            'learning_history': history,
         }, model_save_path)
 
+    # Plot learning curves.
+    for metric_name, metric_values in history.items():
+        plt.plot(metric_values, label=metric_name)
+    plt.plot(np.full(epochs, 1.0), 'k--')
+    plt.gca().set_ylim(bottom=0.0)
+    plt.xlabel('epoch')
+    plt.ylabel('metric value')
+    plt.legend()
     plt.show()
 
 if __name__ == '__main__':
