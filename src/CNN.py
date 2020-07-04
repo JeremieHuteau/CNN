@@ -4,7 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torchsummary
 
-from groupy.gconv import pytorch_gconv
+#from groupy.gconv import pytorch_gconv
 
 import pytorch_model
 import model_building as build
@@ -159,47 +159,47 @@ class GroupView(nn.Module):
         x = x.view(-1, shape[1]*shape[2], shape[3], shape[4])
         return x
 
-class GConvBlock(nn.Module):
-    def __init__(self,
-        in_channels, out_channels, kernel_size, 
-        stride=1, padding=0, dilation=1, groups=1, depthwise=False,
-        #dropout_p=0,
-    ):
-        super(GConvBlock, self).__init__()
-
-        self.in_channels = in_channels//4
-        self.out_channels = out_channels//4
-        self.groups = groups
-
-        self.group_convs = nn.ModuleList()
-        in_group_channels = self.in_channels // groups
-        out_group_channels = self.out_channels // groups
-        self.group_convs.extend([
-            pytorch_gconv.P4ConvP4(
-                in_group_channels, out_group_channels, kernel_size,
-                stride = stride, padding = padding)
-            for i in range(groups)
-        ])
-
-        self.block = nn.Sequential(
-            nn.ReLU(),
-            nn.BatchNorm3d(self.out_channels),
-            #GroupView(),
-        )
-
-    def forward(self, x):
-        if self.groups > 1:
-            chunks = x.chunk(self.groups, dim=1)
-            x = torch.stack([
-                group_conv(chunk) 
-                for (group_conv, chunk) in zip(self.group_convs, chunks)
-            ], dim=1)
-            x = torch.transpose(x, 1, 2).contiguous()
-            h, w = x.size()[-2:]
-            x = x.view(-1, self.out_channels, 4, h, w)
-        else:
-            x = self.group_convs[0](x)
-        return self.block(x)
+#class GConvBlock(nn.Module):
+#    def __init__(self,
+#        in_channels, out_channels, kernel_size, 
+#        stride=1, padding=0, dilation=1, groups=1, depthwise=False,
+#        #dropout_p=0,
+#    ):
+#        super(GConvBlock, self).__init__()
+#
+#        self.in_channels = in_channels//4
+#        self.out_channels = out_channels//4
+#        self.groups = groups
+#
+#        self.group_convs = nn.ModuleList()
+#        in_group_channels = self.in_channels // groups
+#        out_group_channels = self.out_channels // groups
+#        self.group_convs.extend([
+#            pytorch_gconv.P4ConvP4(
+#                in_group_channels, out_group_channels, kernel_size,
+#                stride = stride, padding = padding)
+#            for i in range(groups)
+#        ])
+#
+#        self.block = nn.Sequential(
+#            nn.ReLU(),
+#            nn.BatchNorm3d(self.out_channels),
+#            #GroupView(),
+#        )
+#
+#    def forward(self, x):
+#        if self.groups > 1:
+#            chunks = x.chunk(self.groups, dim=1)
+#            x = torch.stack([
+#                group_conv(chunk) 
+#                for (group_conv, chunk) in zip(self.group_convs, chunks)
+#            ], dim=1)
+#            x = torch.transpose(x, 1, 2).contiguous()
+#            h, w = x.size()[-2:]
+#            x = x.view(-1, self.out_channels, 4, h, w)
+#        else:
+#            x = self.group_convs[0](x)
+#        return self.block(x)
 
 class ReusableConvBlock(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size, stride=1,
