@@ -8,6 +8,7 @@ import torch.nn.functional as F
 import torchsummary
 
 from tqdm.notebook import tqdm
+from tqdm import tqdm
 
 import utils
 
@@ -44,7 +45,8 @@ class PyTorchModel(nn.Module, abc.ABC):
             after_epoch_fn = None,
             before_validation_fn = None,
             after_validation_fn = None,
-            device=torch.device("cpu")
+            device=torch.device("cpu"),
+            verbose=False
         ):
         starting_time = time.time()
         history = {}
@@ -63,14 +65,19 @@ class PyTorchModel(nn.Module, abc.ABC):
                 before_epoch_fn(self, epoch=epoch) 
             self.train()
 
-            tqdm_batches = tqdm(
-                enumerate(generator),
-                desc="Epoch n°{}/{}".format(epoch+1, epochs),
-                total=steps_per_epoch,
-                unit="batch",
-                #leave=False,
-                #ascii=True,
-            )
+            epoch_start_time = time.time()
+
+            if verbose:
+                tqdm_batches = tqdm(
+                    enumerate(generator),
+                    desc="Epoch n°{}/{}".format(epoch+1, epochs),
+                    total=steps_per_epoch,
+                    unit="batch",
+                    leave=False,
+                    ascii=True,
+                )
+            else:
+                tqdm_batches = enumerate(generator)
 
             for batch_id, (inputs, targets) in tqdm_batches:
                 if before_batch_fn is not None:
@@ -93,9 +100,10 @@ class PyTorchModel(nn.Module, abc.ABC):
                     (1-smoothing)*current_loss)
                 previous_loss = current_loss
 
-                tqdm_batches.set_postfix(
-                        {"loss": "{:.3f}".format(current_loss)},
-                        refresh=False)
+                if verbose:
+                    tqdm_batches.set_postfix(
+                            {"loss": "{:.3f}".format(current_loss)},
+                            refresh=False)
 
                 if after_batch_fn is not None:
                     after_batch_fn(self, epoch=epoch, step=batch_id)
@@ -103,8 +111,8 @@ class PyTorchModel(nn.Module, abc.ABC):
                 if batch_id+1 >= steps_per_epoch:
                     break
 
-
-            tqdm_batches.close()
+            if verbose:
+                tqdm_batches.close()
 
 
             # Compute training metrics.
@@ -115,7 +123,8 @@ class PyTorchModel(nn.Module, abc.ABC):
                     generator, 
                     self.metrics, 
                     validation_steps,
-                )
+                    device=device)
+
             for metric_name, value in epoch_metrics.items():
                 history.setdefault(metric_name, []).append(value)
             previous_loss = epoch_metrics['loss']
@@ -124,8 +133,9 @@ class PyTorchModel(nn.Module, abc.ABC):
                 validation_metrics = self.evaluate(
                         validation_data, 
                         self.metrics, 
-                        validation_steps
-                    )
+                        validation_steps,
+                        device=device)
+
                 for metric_name, value in validation_metrics.items():
                     history.setdefault('val_'+metric_name, []).append(value)
                     epoch_metrics['val_'+metric_name] = value
@@ -137,7 +147,8 @@ class PyTorchModel(nn.Module, abc.ABC):
             if after_epoch_fn is not None:
                 after_epoch_fn(self, epoch=epoch, metrics=epoch_metrics)
 
-            print("Epoch {}/{}:".format(epoch+1, epochs),
+            print("Epoch {}/{} ({:.1f}s):".format(epoch+1, epochs, 
+                time.time()-epoch_start_time),
                 utils.format_metrics(epoch_metrics))
         
         print("Training completed in {:.1f}s.".format(time.time()-starting_time))
@@ -145,7 +156,7 @@ class PyTorchModel(nn.Module, abc.ABC):
         return history
 
     def evaluate(self, dataloader, metrics=None, steps=None,
-            confusion=False, device=torch.device('cpu')):
+            confusion=False, device=torch.device('cpu'), verbose=False):
         self.to(device)
 
         if steps is None:
@@ -169,14 +180,17 @@ class PyTorchModel(nn.Module, abc.ABC):
         #        outputs = self(inputs)
         #        if batch_id+1 >= 50: break
 
-        tqdm_batches = tqdm(
-            enumerate(dataloader),
-            desc="Evaluation",
-            total=steps,
-            unit="batch",
-            #leave=False,
-            #ascii=True,
-        )
+        if verbose:
+            tqdm_batches = tqdm(
+                enumerate(dataloader),
+                desc="Evaluation",
+                total=steps,
+                unit="batch",
+                leave=False,
+                ascii=True,
+            )
+        else:
+            tqdm_batches = enumerate(dataloader)
 
         self.eval()
         with torch.no_grad():
@@ -204,7 +218,8 @@ class PyTorchModel(nn.Module, abc.ABC):
                 if batch_id+1 >= steps:
                     break
 
-        tqdm_batches.close()
+        if verbose:
+            tqdm_batches.close()
 
         for metric_name in metric_values:
             metric_values[metric_name] /= steps
