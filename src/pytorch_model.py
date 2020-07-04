@@ -1,11 +1,14 @@
 import abc
+import time
 
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torchsummary
 
 from tqdm import tqdm
+
 import utils
 
 
@@ -13,12 +16,21 @@ class PyTorchModel(nn.Module, abc.ABC):
     """Abstract class for pytorch models."""
 
     def __init__(self, *args, **kwargs):
-        # Subclasses should set criterion and optimizer, 
-        # and optionally metrics.
         super(PyTorchModel, self).__init__()
         self.criterion = None
         self.optimizer = None
-        self.metrics = None
+        self.scheduler = None
+        self.metrics = {}
+
+    def train_on_batch(self, inputs, targets):
+        self.optimizer.zero_grad()
+
+        predictions = self(inputs)
+        loss = self.criterion(predictions, targets)
+
+        loss.backward()
+        self.optimizer.step()
+
 
     def fit_generator(self,
             generator,
@@ -26,23 +38,41 @@ class PyTorchModel(nn.Module, abc.ABC):
             epochs = 1,
             validation_data = None,
             validation_steps = None,
+            before_batch_fn = None,
+            after_batch_fn = None,
+            before_epoch_fn = None,
+            after_epoch_fn = None,
+            before_validation_fn = None,
+            after_validation_fn = None,
         ):
+        starting_time = time.time()
         history = {}
+
+        previous_loss = np.log(10)
+        smoothing = 0.99
 
         # Will raise an error if generator is a real generator (no __len__).
         if steps_per_epoch is None:
             steps_per_epoch = len(generator)
 
         for epoch in range(epochs):
+            if before_epoch_fn is not None:
+                before_epoch_fn(self, epoch=epoch) 
             self.train()
 
-            for batch_id, (inputs, targets) in tqdm(
-                    enumerate(generator),
-                    desc="Epoch n°{}/{}".format(epoch+1, epochs),
-                    total=steps_per_epoch,
-                    ncols=80,
-                    position=0,
-                ):
+            tqdm_batches = tqdm(
+                enumerate(generator),
+                desc="Epoch n°{}/{}".format(epoch+1, epochs),
+                total=steps_per_epoch,
+                unit="batch",
+                leave=False,
+                ascii=True,
+            )
+
+            for batch_id, (inputs, targets) in tqdm_batches:
+                if before_batch_fn is not None:
+                    before_batch_fn(self, epoch=epoch, step=batch_id)
+
                 self.optimizer.zero_grad()
 
                 predictions = self(inputs)
@@ -51,17 +81,40 @@ class PyTorchModel(nn.Module, abc.ABC):
                 loss.backward()
                 self.optimizer.step()
 
+                #if self.scheduler is not None:
+                #    self.scheduler.step()
+
+                current_loss = loss.item()
+                current_loss = (smoothing*previous_loss) + (
+                    (1-smoothing)*current_loss)
+                previous_loss = current_loss
+
+                tqdm_batches.set_postfix(
+                        {"loss": "{:.3f}".format(current_loss)},
+                        refresh=False)
+
+                if after_batch_fn is not None:
+                    after_batch_fn(self, epoch=epoch, step=batch_id)
+
                 if batch_id+1 >= steps_per_epoch:
                     break
 
+
+            tqdm_batches.close()
+
+
             # Compute training metrics.
+            if before_validation_fn is not None:
+                before_validation_fn(self, epoch=epoch)
+
             epoch_metrics = self.evaluate(
                     generator, 
                     self.metrics, 
-                    validation_steps
+                    validation_steps,
                 )
             for metric_name, value in epoch_metrics.items():
                 history.setdefault(metric_name, []).append(value)
+            previous_loss = epoch_metrics['loss']
 
             if validation_data is not None:
                 validation_metrics = self.evaluate(
@@ -73,13 +126,22 @@ class PyTorchModel(nn.Module, abc.ABC):
                     history.setdefault('val_'+metric_name, []).append(value)
                     epoch_metrics['val_'+metric_name] = value
 
-            #print(utils.format_metrics(epoch_metrics))
-            tqdm.write(utils.format_metrics(epoch_metrics))
 
+            if after_validation_fn is not None:
+                after_validation_fn(self, epoch=epoch)
+
+            if after_epoch_fn is not None:
+                after_epoch_fn(self, epoch=epoch, metrics=epoch_metrics)
+
+            print("Epoch {}/{}:".format(epoch+1, epochs),
+                utils.format_metrics(epoch_metrics))
+        
+        print("Training completed in {:.1f}s.".format(time.time()-starting_time))
 
         return history
 
-    def evaluate(self, dataloader, metrics=None, steps=None):
+    def evaluate(self, dataloader, metrics=None, steps=None,
+            confusion=False):
         if steps is None:
             steps = len(dataloader)
 
@@ -88,116 +150,68 @@ class PyTorchModel(nn.Module, abc.ABC):
         }
         if metrics is None:
             metrics = self.metrics
-        if metrics is None:
-            metrics = {}
         for metric_name, metric_fn in metrics.items():
             metric_values[metric_name] = 0.0
 
+        if confusion:
+            confusion_matrix = torch.zeros(self.nb_classes, self.nb_classes)
+
+        ## Warmup the BNs.
+        #self.train
+        #with torch.no_grad():
+        #    for batch_id, (inputs, targets) in enumerate(dataloader):
+        #        outputs = self(inputs)
+        #        if batch_id+1 >= 50: break
+
+        tqdm_batches = tqdm(
+            enumerate(dataloader),
+            desc="Evaluation",
+            total=steps,
+            unit="batch",
+            leave=False,
+            ascii=True,
+        )
+
         self.eval()
         with torch.no_grad():
-            for batch_id, (inputs, targets) in enumerate(dataloader):
-                predictions = self(inputs)
+            for batch_id, (inputs, targets) in tqdm_batches:
+                outputs = self(inputs)
+                if isinstance(outputs, dict):
+                    logits = outputs['logits']
+                else:
+                    logits = outputs
+                predictions = torch.max(logits, 1)[1]
 
-                metric_values['loss'] += self.criterion(predictions, targets)
+                metric_values['loss'] += self.criterion(
+                        outputs, targets).item()
+
                 for metric_name, metric_fn in metrics.items():
-                    metric_values[metric_name] += metric_fn(predictions, targets)
+                    metric_values[metric_name] += metric_fn(
+                            outputs,
+                            targets).item()
+
+                if confusion:
+                    for t, p in zip(targets.view(-1), predictions.view(-1)):
+                        confusion_matrix[t.long(), p.long()] += 1
 
                 if batch_id+1 >= steps:
                     break
 
+        tqdm_batches.close()
+
         for metric_name in metric_values:
             metric_values[metric_name] /= steps
 
+        if confusion:
+            return metric_values, confusion_matrix
+
         return metric_values
 
-
-
-def nb_flattened_features(x):
-    nb = 1
-    for dimension in x.size():
-        nb *= dimension
-    return nb
-
-class MLP(PyTorchModel):
-    def __init__(self, x):
-        super(MLP, self).__init__()
-
-        self.input_dimension = nb_flattened_features(x)
-
-        self.fc1 = nn.Linear(self.input_dimension, 16)
-        self.fc1activation = nn.ReLU()
-
-        self.fc2 = nn.Linear(16, 10)
-
-        self.criterion = nn.CrossEntropyLoss()
-        self.optimizer = torch.optim.SGD(self.parameters(), lr=1e-1)
-        self.metrics = {
-            'accuracy': lambda y_hat, y: (torch.max(y_hat, 1)[1]==y).float().mean()
-        }
-
-    def forward(self, x):
-        x = x.view(-1, self.input_dimension)
-
-        x = self.fc1(x)
-        x = self.fc1activation(x)
-
-        x = self.fc2(x)
-
-        return x
-
-class CNN(nn.Module):
-    def __init__(self, nb_classes, *args, **kwargs):
-        super(CNN, self).__init__()
-
-        # Number of filters of last convolution = nb features of 1st FC layer
-        self.nb_filters = 32
-
-        self.conv1 = nn.Conv2d(1, 4, 3)
-        self.conv1activation = nn.ReLU()
-        self.conv1pool = nn.MaxPool2d(2)
-
-        self.conv2 = nn.Conv2d(4, self.nb_filters, 3)
-        self.conv2activation = nn.ReLU()
-        #self.conv2pool = nn.MaxPool2d(2)
-
-        self.global_pool = nn.AdaptiveMaxPool2d(1)
-
-        self.fc1 = nn.Linear(self.nb_filters, self.nb_filters//2)
-        self.fc1activation = nn.ReLU()
-
-        self.fc2 = nn.Linear(self.nb_filters//2, nb_classes)
-
-    def forward(self, x):
-        x = self.conv1(x)
-        x = self.conv1activation(x)
-        x = self.conv1pool(x)
-
-        x = self.conv2(x)
-        x = self.conv2activation(x)
-
-        x = self.global_pool(x)
-
-        x = x.view(-1, self.nb_filters)
-
-        x = self.fc1(x)
-        x = self.fc1activation(x)
-
-        x = self.fc2(x)
-
-        return x
-
-
-if __name__ == '__main__':
-    dummy_inputs = torch.randn(2, 1, 28, 28)
-    dummy_targets = torch.randint(0, 1, (2, 1))
-    dummy_nb_classes = 10
-
-    model = MLP(dummy_inputs)
-    #model = CNN(dummy_inputs, dummy_nb_classes)
-    torchsummary.summary(model, input_size=dummy_inputs.size()[1:])
-
-
-    dummy_predictions = model(dummy_inputs)
-    print(dummy_predictions)
-    print(dummy_predictions.size())
+    def bn_update(self, dataloader, steps=300):
+        self.train()
+        with torch.no_grad():
+            for batch_id, (inputs, _) in enumerate(dataloader):
+                outputs = self(inputs)
+                if batch_id+1 >= steps:
+                    break
 

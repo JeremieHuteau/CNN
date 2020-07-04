@@ -12,3 +12,4 @@ dependencies:
   - tqdm=4.43.*=py_0
   - pip:
     - torchsummary==1.5.*
+    - torch-lr-finder==0.1.*
