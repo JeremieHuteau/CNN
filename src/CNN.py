@@ -442,7 +442,7 @@ class Model(pytorch_model.PyTorchModel):
         lengths = [1, 2, 2, 2]
         skip_lengths = [0, 0, 0, 0]
         initial_channels = 16
-        final_channels = 48
+        final_channels = 192
 
         #dropout = 0.0
         #block = ResidualBlock
