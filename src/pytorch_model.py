@@ -7,7 +7,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torchsummary
 
-from tqdm import tqdm_notebook as tqdm
+from tqdm import tqdm
 
 import utils
 
@@ -65,7 +65,8 @@ class PyTorchModel(nn.Module, abc.ABC):
                 desc="Epoch n°{}/{}".format(epoch+1, epochs),
                 total=steps_per_epoch,
                 unit="batch",
-                leave=False,
+                position=0,
+                leave=True,
                 ascii=True,
             )
 
@@ -168,7 +169,8 @@ class PyTorchModel(nn.Module, abc.ABC):
             desc="Evaluation",
             total=steps,
             unit="batch",
-            leave=False,
+            position=0,
+            leave=True,
             ascii=True,
         )
 
