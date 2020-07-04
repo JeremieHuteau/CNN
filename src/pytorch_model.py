@@ -7,7 +7,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torchsummary
 
-from tqdm import tqdm
+from tqdm.notebook import tqdm
 
 import utils
 
@@ -44,12 +44,15 @@ class PyTorchModel(nn.Module, abc.ABC):
             after_epoch_fn = None,
             before_validation_fn = None,
             after_validation_fn = None,
+            device=torch.device("cpu")
         ):
         starting_time = time.time()
         history = {}
 
         previous_loss = np.log(10)
         smoothing = 0.99
+
+        self.to(device)
 
         # Will raise an error if generator is a real generator (no __len__).
         if steps_per_epoch is None:
@@ -65,14 +68,14 @@ class PyTorchModel(nn.Module, abc.ABC):
                 desc="Epoch n°{}/{}".format(epoch+1, epochs),
                 total=steps_per_epoch,
                 unit="batch",
-                position=0,
-                leave=True,
-                ascii=True,
+                #leave=False,
+                #ascii=True,
             )
 
             for batch_id, (inputs, targets) in tqdm_batches:
                 if before_batch_fn is not None:
                     before_batch_fn(self, epoch=epoch, step=batch_id)
+                inputs, targets = inputs.to(device), targets.to(device)
 
                 self.optimizer.zero_grad()
 
@@ -142,7 +145,9 @@ class PyTorchModel(nn.Module, abc.ABC):
         return history
 
     def evaluate(self, dataloader, metrics=None, steps=None,
-            confusion=False):
+            confusion=False, device=torch.device('cpu')):
+        self.to(device)
+
         if steps is None:
             steps = len(dataloader)
 
@@ -169,14 +174,14 @@ class PyTorchModel(nn.Module, abc.ABC):
             desc="Evaluation",
             total=steps,
             unit="batch",
-            position=0,
-            leave=True,
-            ascii=True,
+            #leave=False,
+            #ascii=True,
         )
 
         self.eval()
         with torch.no_grad():
             for batch_id, (inputs, targets) in tqdm_batches:
+                inputs, targets = inputs.to(device), targets.to(device)
                 outputs = self(inputs)
                 if isinstance(outputs, dict):
                     logits = outputs['logits']

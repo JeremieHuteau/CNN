@@ -26,6 +26,13 @@ def main(train_images_path, train_labels_path, model_save_path):
         'data/', train=True, 
         transform=None, target_transform=None, 
         download=True)
+
+    if torch.cuda.is_available():
+        print("GPU enabled.")
+        print("Using", torch.cuda.get_device_name(0))
+    else:
+        print("CPU only.")
+
     #dataset = torchvision.datasets.MNIST(
     #    'data/', train=True, 
     #    transform=None, target_transform=None, 
