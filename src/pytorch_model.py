@@ -7,7 +7,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torchsummary
 
-from tqdm import tqdm
+from tqdm import tqdm_notebook as tqdm
 
 import utils
 
