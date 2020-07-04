@@ -30,8 +30,10 @@ def main(train_images_path, train_labels_path, model_save_path):
     if torch.cuda.is_available():
         print("GPU enabled.")
         print("Using", torch.cuda.get_device_name(0))
+        device = torch.device('cuda:0')
     else:
         print("CPU only.")
+        device = torch.device('cpu')
 
     #dataset = torchvision.datasets.MNIST(
     #    'data/', train=True, 
@@ -221,6 +223,7 @@ def main(train_images_path, train_labels_path, model_save_path):
         validation_data = validation_dataloader,
         validation_steps = min(300, validation_split_size // batch_size),
         **strategy_functions,
+        device=device
     )
 
     strategy_functions = {
@@ -290,9 +293,9 @@ def main(train_images_path, train_labels_path, model_save_path):
     model.bn_update(training_dataloader)
     # Compute metrics on whole sets.
     training_metrics, training_confusion_matrix = model.evaluate(
-            training_dataloader, steps=None, confusion=True)
+            training_dataloader, steps=None, confusion=True, device=device)
     validation_metrics, validation_confusion_matrix = model.evaluate(
-            validation_dataloader, steps=None, confusion=True)
+            validation_dataloader, steps=None, confusion=True, device=device)
     print()
     print("{:<12}".format("Training:"), utils.format_metrics(training_metrics))
     print("{:<12}".format("Validation:"), utils.format_metrics(validation_metrics))
